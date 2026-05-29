@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハッシュタグバナー生成ツール</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@700&family=Noto+Sans+JP:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  padding: 32px;
+  min-height: 100vh;
+}
+.app { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
+.session-name { font-size: 14px; color: #86868b; margin-bottom: 24px; }
+.input-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.input-section label { font-size: 14px; font-weight: 700; display: block; margin-bottom: 8px; }
+textarea {
+  width: 100%;
+  height: 180px;
+  border: 1px solid #d2d2d7;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 15px;
+  font-family: 'Noto Sans JP', sans-serif;
+  resize: vertical;
+  line-height: 1.8;
+}
+textarea:focus { outline: none; border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,0.15); }
+.btn-row { display: flex; gap: 12px; margin-top: 16px; }
+button {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Noto Sans JP', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+button:hover { transform: translateY(-1px); }
+button:active { transform: translateY(0); }
+.btn-primary { background: #0071e3; color: white; }
+.btn-primary:hover { background: #0077ED; }
+.btn-export { background: #30d158; color: white; }
+.btn-export:hover { background: #28c84e; }
+.btn-export:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+.btn-back { background: #e5e5ea; color: #1d1d1f; margin-bottom: 16px; }
+.btn-back:hover { background: #d1d1d6; }
+.btn-new { background: #0071e3; color: white; font-size: 16px; padding: 14px 32px; margin-bottom: 24px; }
+.btn-new:hover { background: #0077ED; }
+.btn-danger { background: transparent; color: #ff3b30; border: 1px solid #ff3b30; padding: 6px 16px; font-size: 13px; }
+.btn-danger:hover { background: #fff5f5; }
+.btn-open { background: #0071e3; color: white; padding: 6px 16px; font-size: 13px; }
+#preview-section { margin-top: 24px; }
+.hashtag-group {
+  background: white;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.hashtag-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.hashtag-title { font-size: 16px; font-weight: 700; }
+.color-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.color-select {
+  padding: 4px 8px;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'Noto Sans JP', sans-serif;
+  cursor: pointer;
+}
+.banner-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.banner-item { display: flex; flex-direction: column; gap: 4px; }
+.banner-item .label { font-size: 11px; color: #86868b; }
+canvas { display: block; border-radius: 4px; }
+
+/* Session list */
+.session-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.session-card-info { flex: 1; min-width: 0; }
+.session-card-id { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.session-card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.session-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f5f5f7;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #636366;
+}
+.session-tag .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.session-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.empty-state { text-align: center; padding: 60px 20px; color: #86868b; }
+.empty-state p { font-size: 15px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>ハッシュタグバナー生成ツール</h1>
+
+  <!-- 一覧画面 -->
+  <div id="view-list">
+    <button class="btn-new" id="new-session-btn">新しいセットを作る</button>
+    <div id="session-list"></div>
+  </div>
+
+  <!-- 生成画面 -->
+  <div id="view-editor" style="display:none">
+    <button class="btn-back" id="back-btn">← 一覧に戻る</button>
+    <div class="session-name" id="session-name"></div>
+    <div class="input-section">
+      <label>ハッシュタグ文字列（1行に1つ）</label>
+      <textarea id="hashtag-input" placeholder="当直明けのご褒美&#10;わが子の話&#10;忘れられない患者の言葉&#10;今日の自分を褒めたい！&#10;将来の不安&#10;しくじり先生から一言"></textarea>
+      <div style="display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap">
+        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:13px">上位<input type="number" id="rank-input" value="3" min="1" max="99" style="width:50px;padding:4px 6px;border:1px solid #d2d2d7;border-radius:6px;font-size:14px;font-family:'Noto Sans JP',sans-serif;text-align:center">名に</label>
+        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:13px"><input type="number" id="points-input" value="3000" min="0" max="999999" style="width:80px;padding:4px 6px;border:1px solid #d2d2d7;border-radius:6px;font-size:14px;font-family:'Noto Sans JP',sans-serif;text-align:center"><span style="font-size:14px">a</span></label>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="generate-btn">生成</button>
+        <button class="btn-export" id="export-btn" disabled>PNG一括書き出し</button>
+      </div>
+    </div>
+    <div id="preview-section"></div>
+  </div>
+</div>
+
+<script>
+const COLORS = [
+  { name: 'Teal',      hex: '#019c91' },
+  { name: 'Green',     hex: '#009900' },
+  { name: 'Yellow',    hex: '#d4a900' },
+  { name: 'Orange',    hex: '#eb7a17' },
+  { name: 'Pink',      hex: '#d9178b' },
+  { name: 'Purple',    hex: '#7240d6' },
+  { name: 'Light Blue', hex: '#0e9fe7' },
+  { name: 'Dark Blue', hex: '#094486' },
+];
+
+const SIZES = {
+  pc:   { width: 240, height: 80 },
+  sp:   { width: 600, height: 120 },
+  post: { width: 800, height: 450 },
+};
+
+const SCALE = 2;
+
+// ─── Embedded SVGs ───
+const SVGS = {
+  hashPc: `<svg width="23" height="32" viewBox="0 0 23 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path opacity="0.8" d="M2.53172 32L3.60448 22.9247H0V18.0645H4.16231L4.80597 12.8602H0.98694V8H5.44963L6.43657 0H10.7705L9.82649 8H14.7183L15.7052 0H20.0821L19.1381 8H23V12.8602H18.5373L17.8507 18.0645H22.0131V22.9247H17.2929L16.2201 32H11.8004L12.8731 22.9247H8.02425L6.90858 32H2.53172ZM8.53918 18.0645H13.431L14.0746 12.8602H9.18284L8.53918 18.0645Z" fill="white"/></svg>`,
+
+  hashSp: `<svg width="29" height="40" viewBox="0 0 29 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path opacity="0.8" d="M3.19216 40L4.54478 28.6559H0V22.5806H5.24813L6.0597 16.0753H1.2444V10H6.87127L8.11567 0H13.5802L12.3899 10H18.5578L19.8022 0H25.3209L24.1306 10H29V16.0753H23.3731L22.5075 22.5806H27.7556V28.6559H21.8041L20.4515 40H14.8787L16.2313 28.6559H10.1175L8.71082 40H3.19216ZM10.7668 22.5806H16.9347L17.7463 16.0753H11.5784L10.7668 22.5806Z" fill="white"/></svg>`,
+
+  hashPost: `<svg width="69" height="96" viewBox="0 0 69 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path opacity="0.8" d="M7.59515 96L10.8134 68.7742H0V54.1936H12.4869L14.4179 38.5806H2.96082V24H16.3489L19.3097 0H32.3116L29.4795 24H44.1549L47.1157 0H60.2463L57.4142 24H69V38.5806H55.6119L53.5522 54.1936H66.0392V68.7742H51.8787L48.6604 96H35.4011L38.6194 68.7742H24.0728L20.7257 96H7.59515ZM25.6175 54.1936H40.2929L42.2239 38.5806H27.5485L25.6175 54.1936Z" fill="white"/></svg>`,
+
+  decoPc: `<svg width="177" height="130" viewBox="0 0 177 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g opacity="0.2">
+<path d="M177 60C177 93.1371 152.5 120 88.5 120C24.5 120 0 93.1371 0 60C0 26.8629 39.6228 0 88.5 0C137.377 0 177 26.8629 177 60Z" fill="white"/>
+<path d="M31 10C53.6437 10 72 36.8629 72 70C72 103.137 53.6437 130 31 130C28.3597 130 25.7778 129.634 23.2764 128.937C36.2178 123.648 46 99.2721 46 70C46 40.7277 36.218 16.3503 23.2764 11.0625C25.7777 10.3647 28.3598 10 31 10Z" fill="white"/>
+</g></svg>`,
+
+  decoSp: `<svg width="262" height="193" viewBox="0 0 262 192.429" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g opacity="0.2">
+<path d="M262 88.8136C262 137.864 225.734 177.627 131 177.627C36.2655 177.627 0 137.864 0 88.8136C0 39.7632 58.6507 1.89245e-06 131 1.89245e-06C203.349 1.89245e-06 262 39.7632 262 88.8136Z" fill="white"/>
+<path d="M45.8869 14.8023C79.4046 14.8023 106.576 54.5654 106.576 103.616C106.576 152.666 79.4047 192.429 45.8869 192.429C41.9784 192.429 38.1562 191.888 34.4533 190.855C53.6101 183.028 68.091 146.946 68.091 103.616C68.091 60.2855 53.6103 24.202 34.4533 16.3755C38.1561 15.3424 41.9785 14.8023 45.8869 14.8023Z" fill="white"/>
+</g></svg>`,
+
+  decoPost: `<svg width="561" height="412" viewBox="0 0 560.954 412" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path opacity="0.4" d="M280.478 0C435.381 0.000135189 560.954 85.1352 560.954 190.154C560.954 295.173 483.308 380.308 280.478 380.308C242.048 380.308 208.111 377.251 178.346 371.582C156.275 396.902 128.466 412 98.2471 412C89.8786 412 81.6949 410.841 73.7666 408.629C91.7767 401.27 107.855 382.246 120.227 355.367C35.2326 322.614 9.40687e-05 260.896 0 190.154C0 133.837 36.111 83.2384 93.4912 48.4199C87.265 42.4024 80.6577 37.878 73.7666 35.0625C81.6948 32.8506 89.8787 31.6924 98.2471 31.6924C105.579 31.6924 112.769 32.5822 119.77 34.29C165.282 12.6805 220.696 0 280.478 0Z" fill="url(#paint0_linear)"/>
+<defs>
+<linearGradient id="paint0_linear" x1="389.5" y1="129.5" x2="45.5" y2="412" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="1" stop-color="white" stop-opacity="0.3"/>
+</linearGradient>
+</defs></svg>`,
+
+  action: `<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_action)">
+<path d="M5.49995 1.71924C4.4997 1.71924 3.54042 2.11658 2.83314 2.82387C2.12586 3.53115 1.72852 4.49042 1.72852 5.49067V38.4907C1.72852 39.4909 2.12586 40.4502 2.83314 41.1575C3.54042 41.8648 4.4997 42.2621 5.49995 42.2621H38.4999C39.5002 42.2621 40.4595 41.8648 41.1667 41.1575C41.874 40.4502 42.2714 39.4909 42.2714 38.4907V5.5001C42.2714 4.49985 41.874 3.54057 41.1667 2.83329C40.4595 2.12601 39.5002 1.72867 38.4999 1.72867L5.49995 1.71924Z" fill="white"/>
+<path d="M29.8571 27.632V17.028C29.9792 16.071 29.899 15.099 29.6218 14.1748C29.3446 13.2507 28.8766 12.395 28.248 11.6631C27.3604 10.9353 26.3373 10.3909 25.2378 10.0613C24.1384 9.73163 22.9844 9.62341 21.8429 9.74286C19.3848 9.64318 16.9443 10.1985 14.7714 11.352C13.9692 11.7541 13.2844 12.3565 12.7833 13.1009C12.2823 13.8454 11.9819 14.7066 11.9114 15.6011V17.336H17.2386V15.2837C17.4177 12.1409 18.6246 10.8146 21.2174 10.8146C24.1686 10.8146 25.0171 12.2006 25.0171 16.8049V19.712C22.4843 19.8256 19.9633 20.1249 17.4743 20.6077C12.87 21.5914 10.56 23.914 10.56 27.6257C10.5101 28.5091 10.6523 29.3928 10.9768 30.216C11.3013 31.0391 11.8003 31.7822 12.4396 32.3939C13.0788 33.0057 13.843 33.4716 14.6797 33.7596C15.5163 34.0476 16.4054 34.1509 17.2857 34.0623C18.7688 34.0452 20.2309 33.7091 21.5725 33.0768C22.9142 32.4445 24.104 31.5308 25.0611 30.3977V30.5674V31.8591V34.2571L33.4746 32.7517V31.8089C30.602 31.7209 29.8571 30.9226 29.8571 27.632ZM25.0171 23.6909C25.1554 25.5688 24.8496 27.453 24.1246 29.1909C23.6784 30.0841 22.9975 30.839 22.1547 31.3744C21.312 31.9098 20.3393 32.2056 19.3411 32.23C17.1411 32.23 15.6766 30.1714 15.6766 27.1763C15.5966 26.1388 15.8263 25.1009 16.3365 24.194C16.8467 23.2871 17.6146 22.552 18.5429 22.0817C20.5897 21.2068 22.7912 20.7516 25.0171 20.7429V23.6909ZM38.5 0H5.5C4.04131 0 2.64236 0.579463 1.61091 1.61091C0.579463 2.64236 0 4.04131 0 5.5L0 38.5C0 39.9587 0.579463 41.3576 1.61091 42.3891C2.64236 43.4205 4.04131 44 5.5 44H38.5C39.9581 44 41.3566 43.421 42.388 42.3902C43.4193 41.3594 43.9992 39.9613 44 38.5031V5.5C44 4.04131 43.4205 2.64236 42.3891 1.61091C41.3576 0.579463 39.9587 0 38.5 0V0ZM41.1714 38.3429C41.1714 39.093 40.8734 39.8125 40.343 40.343C39.8125 40.8734 39.093 41.1714 38.3429 41.1714H5.65714C4.90696 41.1714 4.1875 40.8734 3.65704 40.343C3.12658 39.8125 2.82857 39.093 2.82857 38.3429V5.65714C2.82857 4.90696 3.12658 4.1875 3.65704 3.65704C4.1875 3.12658 4.90696 2.82857 5.65714 2.82857H38.3429C39.093 2.82857 39.8125 3.12658 40.343 3.65704C40.8734 4.1875 41.1714 4.90696 41.1714 5.65714V38.3429Z" fill="#CC0000"/>
+</g>
+<defs>
+<clipPath id="clip0_action">
+<rect width="44" height="44" fill="white"/>
+</clipPath>
+</defs></svg>`,
+
+  corner: `<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M52 2H2V52" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
+
+// ─── Image loader ───
+const loadedImages = {};
+
+function svgToImage(svgString) {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function loadAllImages() {
+  const entries = Object.entries(SVGS);
+  await Promise.all(entries.map(async ([key, svg]) => {
+    loadedImages[key] = await svgToImage(svg);
+  }));
+}
+
+// ─── Text helpers ───
+function drawTextWithTracking(ctx, text, x, y, tracking) {
+  const chars = [...text];
+  for (let i = 0; i < chars.length; i++) {
+    ctx.fillText(chars[i], x, y);
+    x += ctx.measureText(chars[i]).width + tracking;
+  }
+  return x - tracking;
+}
+
+function measureTextWithTracking(ctx, text, tracking) {
+  const chars = [...text];
+  let w = 0;
+  for (let i = 0; i < chars.length; i++) {
+    w += ctx.measureText(chars[i]).width;
+    if (i < chars.length - 1) w += tracking;
+  }
+  return w;
+}
+
+function splitText(ctx, text, maxW, tracking) {
+  if (measureTextWithTracking(ctx, text, tracking) <= maxW) return [text];
+  const chars = [...text];
+  const len = chars.length;
+  const mid = len / 2;
+
+  // 助詞・接続点の後ろで改行すると自然になる
+  const breakAfter = ['の', 'を', 'に', 'は', 'が', 'で', 'と', 'も', 'へ', 'な', '！', '？', '、', '・'];
+  const breakAfterMulti = ['から', 'まで', 'より', 'って', 'した', 'ない', 'たい', 'する', 'ある', 'いる'];
+
+  const candidates = [];
+  for (let i = 2; i < len - 1; i++) {
+    let score = Math.abs(i - mid);
+    const before = chars.slice(Math.max(0, i - 1), i + 1).join('');
+    const isMulti = breakAfterMulti.some(p => {
+      const start = i + 1 - p.length;
+      return start >= 0 && chars.slice(start, i + 1).join('') === p;
+    });
+    const isSingle = breakAfter.includes(chars[i]);
+    if (isSingle || isMulti) {
+      candidates.push({ idx: i + 1, score });
+    }
+  }
+
+  let splitIdx;
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => a.score - b.score);
+    splitIdx = candidates[0].idx;
+  } else {
+    splitIdx = Math.ceil(mid);
+  }
+
+  const line1 = chars.slice(0, splitIdx).join('');
+  const line2 = chars.slice(splitIdx).join('');
+  return [line1, line2];
+}
+
+// ─── Setup canvas with 2x scale ───
+function setupCanvas(canvas, W, H) {
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(SCALE, SCALE);
+  return ctx;
+}
+
+// ─── Render: PC Banner (240×80 → export 480×160) ───
+function renderPC(canvas, text, colorHex) {
+  const W = 240, H = 80;
+  const ctx = setupCanvas(canvas, W, H);
+
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(loadedImages.decoPc, 94, -53, 177, 130);
+
+  const hashW = 23, hashH = 32;
+  const fontSize = 18;
+  const tracking = 0.9;
+  const gap = 13;
+  const maxTextW = W - hashW - gap - 24;
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  ctx.fillStyle = 'white';
+  const lines = splitText(ctx, text, maxTextW, tracking);
+  const lineH = fontSize * 1.3;
+  const textBlockH = lines.length === 1 ? hashH : lineH * lines.length;
+
+  const row2H = 16;
+  const vGap = 4;
+  const totalH = textBlockH + vGap + row2H;
+  const contentTop = (H - totalH) / 2;
+
+  const longestLineW = Math.max(...lines.map(l => measureTextWithTracking(ctx, l, tracking)));
+  const totalContentW = hashW + gap + longestLineW;
+  const startX = (W - totalContentW) / 2;
+
+  ctx.drawImage(loadedImages.hashPc, startX, contentTop + (textBlockH - hashH) / 2, hashW, hashH);
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'middle';
+  const textX = startX + hashW + gap;
+  if (lines.length === 1) {
+    drawTextWithTracking(ctx, lines[0], textX, contentTop + textBlockH / 2, tracking);
+  } else {
+    for (let i = 0; i < lines.length; i++) {
+      drawTextWithTracking(ctx, lines[i], textX, contentTop + lineH * i + lineH / 2, tracking);
+    }
+  }
+
+  const subCenterY = contentTop + textBlockH + vGap + row2H / 2;
+  renderSubtitlePcSp(ctx, W / 2, subCenterY, 'pc');
+}
+
+// ─── Render: SP Banner (600×120 → export 1200×240) ───
+function renderSP(canvas, text, colorHex) {
+  const W = 600, H = 120;
+  const ctx = setupCanvas(canvas, W, H);
+
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(loadedImages.decoSp, 349, -81, 262, 193);
+
+  const hashW = 29, hashH = 40;
+  const fontSize = 32;
+  const tracking = 1.6;
+  const gap = 13;
+  const maxTextW = W - hashW - gap - 40;
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  ctx.fillStyle = 'white';
+  const lines = splitText(ctx, text, maxTextW, tracking);
+  const lineH = fontSize * 1.2;
+  const textBlockH = lines.length === 1 ? hashH : lineH * lines.length;
+
+  const row2H = 23;
+  const vGap = 8;
+  const totalH = textBlockH + vGap + row2H;
+  const contentTop = (H - totalH) / 2;
+
+  const longestLineW = Math.max(...lines.map(l => measureTextWithTracking(ctx, l, tracking)));
+  const totalContentW = hashW + gap + longestLineW;
+  const startX = (W - totalContentW) / 2;
+
+  ctx.drawImage(loadedImages.hashSp, startX, contentTop + (textBlockH - hashH) / 2, hashW, hashH);
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'middle';
+  const textX = startX + hashW + gap;
+  if (lines.length === 1) {
+    drawTextWithTracking(ctx, lines[0], textX, contentTop + textBlockH / 2, tracking);
+  } else {
+    for (let i = 0; i < lines.length; i++) {
+      drawTextWithTracking(ctx, lines[i], textX, contentTop + lineH * i + lineH / 2, tracking);
+    }
+  }
+
+  const subCenterY = contentTop + textBlockH + vGap + row2H / 2;
+  renderSubtitlePcSp(ctx, W / 2, subCenterY, 'sp');
+}
+
+// ─── Get current rank/points values ───
+function getRank() { return document.getElementById('rank-input')?.value || '3'; }
+function getPoints() { return document.getElementById('points-input')?.value || '3000'; }
+
+// ─── Subtitle renderer for PC/SP ───
+function renderSubtitlePcSp(ctx, centerX, centerY, size) {
+  const p = size === 'pc'
+    ? { jpSize: 12, numSize: 16, jpTracking: 0.6, numTracking: 0.8, numTracking2: 0.16, iconSize: 12 }
+    : { jpSize: 19, numSize: 23, jpTracking: 0.95, numTracking: 1.15, numTracking2: 0.23, iconSize: 16 };
+
+  const rank = getRank();
+  const points = getPoints();
+
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
+  const w1 = measureTextWithTracking(ctx, '上位', p.jpTracking);
+  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
+  const w2 = measureTextWithTracking(ctx, rank, p.numTracking);
+  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
+  const w3 = measureTextWithTracking(ctx, '名に', p.jpTracking);
+  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
+  const w4 = measureTextWithTracking(ctx, points, p.numTracking2);
+  const w5 = p.iconSize;
+
+  const gapPx = 1;
+  const totalW = w1 + gapPx + w2 + gapPx + w3 + gapPx + w4 + gapPx + w5;
+  let x = centerX - totalW / 2;
+
+  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
+  drawTextWithTracking(ctx, '上位', x, centerY, p.jpTracking);
+  x += w1 + gapPx;
+  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
+  drawTextWithTracking(ctx, rank, x, centerY, p.numTracking);
+  x += w2 + gapPx;
+  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
+  drawTextWithTracking(ctx, '名に', x, centerY, p.jpTracking);
+  x += w3 + gapPx;
+  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
+  drawTextWithTracking(ctx, points, x, centerY, p.numTracking2);
+  x += w4 + gapPx;
+  ctx.drawImage(loadedImages.action, x, centerY - p.iconSize / 2, p.iconSize, p.iconSize);
+}
+
+// ─── Render: Post Banner (800×450 → export 1600×900) ───
+function renderPost(canvas, text, colorHex) {
+  const W = 800, H = 450;
+  const ctx = setupCanvas(canvas, W, H);
+
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(loadedImages.decoPost, 401, -90, 561, 412);
+
+  const cornerImg = loadedImages.corner;
+  const cs = 50, co = 26;
+  ctx.drawImage(cornerImg, co, co, cs, cs);
+  ctx.save(); ctx.translate(W - co, co); ctx.scale(-1, 1); ctx.drawImage(cornerImg, 0, 0, cs, cs); ctx.restore();
+  ctx.save(); ctx.translate(W - co, H - co); ctx.scale(-1, -1); ctx.drawImage(cornerImg, 0, 0, cs, cs); ctx.restore();
+  ctx.save(); ctx.translate(co, H - co); ctx.scale(1, -1); ctx.drawImage(cornerImg, 0, 0, cs, cs); ctx.restore();
+
+  // Pill
+  ctx.font = '700 32px "Noto Sans JP"';
+  const pillText = 'ハッシュタグ投稿';
+  const pillTextW = ctx.measureText(pillText).width;
+  const pillPadX = 40, pillPadY = 10;
+  const pillW = pillTextW + pillPadX * 2;
+  const pillH = 32 + pillPadY * 2;
+  const pillX = (W - pillW) / 2;
+  const pillY = 47;
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.roundRect(pillX, pillY, pillW, pillH, 999); ctx.fill();
+  ctx.fillStyle = colorHex;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText(pillText, W / 2, pillY + pillH / 2);
+  ctx.textAlign = 'left';
+
+  // Center content: # + text (with line break support)
+  const hashW = 69, hashH = 96;
+  const fontSize = 48;
+  const tracking = 2.4;
+  const gap = 24;
+  const maxTextW = W - hashW - gap - 80;
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  const lines = splitText(ctx, text, maxTextW, tracking);
+  const lineH = fontSize * 1.3;
+  const textBlockH = lines.length === 1 ? hashH : lineH * lines.length;
+
+  const longestLineW = Math.max(...lines.map(l => measureTextWithTracking(ctx, l, tracking)));
+  const totalContentW = hashW + gap + longestLineW;
+  const contentCenterY = H / 2 - 27;
+  const startX = (W - totalContentW) / 2;
+
+  ctx.drawImage(loadedImages.hashPost, startX, contentCenterY - hashH / 2, hashW, hashH);
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'middle';
+  const textX = startX + hashW + gap;
+  if (lines.length === 1) {
+    drawTextWithTracking(ctx, lines[0], textX, contentCenterY, tracking);
+  } else {
+    const blockTop = contentCenterY - textBlockH / 2;
+    for (let i = 0; i < lines.length; i++) {
+      drawTextWithTracking(ctx, lines[i], textX, blockTop + lineH * i + lineH / 2, tracking);
+    }
+  }
+
+  // Divider
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.roundRect((W - 102) / 2, 294, 102, 3, 2); ctx.fill();
+
+  // Bottom text: "上位" + rank(Lexend) + "名に" + points(Lexend) + icon
+  const rank = getRank();
+  const points = getPoints();
+  const jpFontSize = 32, numFontSize = 65, rankFontSize = 45, bottomGap = 6, iconSize = 44;
+
+  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
+  const w_joui = measureTextWithTracking(ctx, '上位', 1.6);
+  ctx.font = `700 ${rankFontSize}px "Lexend Deca"`;
+  const w_rank = ctx.measureText(rank).width;
+  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
+  const w_meini = measureTextWithTracking(ctx, '名に', 1.6);
+  ctx.font = `700 ${numFontSize}px "Lexend Deca"`;
+  const w_points = ctx.measureText(points).width;
+
+  const totalBottomW = w_joui + w_rank + w_meini + bottomGap + w_points + bottomGap + iconSize;
+  let bx = (W - totalBottomW) / 2;
+  const bottomY = 322;
+  const rowH = numFontSize;
+  const baselineY = bottomY + rowH * 0.75;
+
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
+  drawTextWithTracking(ctx, '上位', bx, baselineY, 1.6);
+  bx += w_joui;
+
+  ctx.font = `700 ${rankFontSize}px "Lexend Deca"`;
+  ctx.fillText(rank, bx, baselineY);
+  bx += w_rank;
+
+  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
+  drawTextWithTracking(ctx, '名に', bx, baselineY, 1.6);
+  bx += w_meini + bottomGap;
+
+  ctx.font = `700 ${numFontSize}px "Lexend Deca"`;
+  ctx.fillText(points, bx, baselineY);
+  bx += w_points + bottomGap;
+
+  ctx.drawImage(loadedImages.action, bx, bottomY + (rowH - iconSize) / 2 - 2, iconSize, iconSize);
+}
+
+// ─── Session Storage ───
+const STORAGE_KEY = 'banner-sessions';
+
+function loadSessions() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveSessions(sessions) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+}
+
+function getSession(id) {
+  return loadSessions().find(s => s.id === id);
+}
+
+function saveSession(session) {
+  const sessions = loadSessions();
+  const idx = sessions.findIndex(s => s.id === session.id);
+  if (idx >= 0) sessions[idx] = session;
+  else sessions.unshift(session);
+  saveSessions(sessions);
+}
+
+function deleteSession(id) {
+  saveSessions(loadSessions().filter(s => s.id !== id));
+}
+
+function getSessionName() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mi = String(now.getMinutes()).padStart(2, '0');
+  return `${yy}${mm}${dd}${hh}${mi}`;
+}
+
+// ─── State ───
+let currentSessionId = null;
+let currentBanners = [];
+
+// ─── Views ───
+function showListView() {
+  saveCurrentSession();
+  currentSessionId = null;
+  currentBanners = [];
+  document.getElementById('view-list').style.display = '';
+  document.getElementById('view-editor').style.display = 'none';
+  renderSessionList();
+}
+
+function showEditorView(sessionId) {
+  currentSessionId = sessionId;
+  document.getElementById('view-list').style.display = 'none';
+  document.getElementById('view-editor').style.display = '';
+  document.getElementById('session-name').textContent = `セッション: ${sessionId}`;
+
+  const session = getSession(sessionId);
+  const sessions = loadSessions();
+  const prevSession = sessions.find(s => s.id !== sessionId && s.rank);
+
+  document.getElementById('rank-input').value = session?.rank || prevSession?.rank || '3';
+  document.getElementById('points-input').value = session?.points || prevSession?.points || '3000';
+
+  if (session && session.hashtags && session.hashtags.length > 0) {
+    document.getElementById('hashtag-input').value = session.hashtags.map(h => h.text).join('\n');
+    generate(session.hashtags);
+  } else {
+    document.getElementById('hashtag-input').value = '';
+    document.getElementById('preview-section').innerHTML = '';
+    document.getElementById('export-btn').disabled = true;
+  }
+}
+
+function renderSessionList() {
+  const list = document.getElementById('session-list');
+  const sessions = loadSessions();
+
+  if (sessions.length === 0) {
+    list.innerHTML = '<div class="empty-state"><p>まだセッションがありません</p></div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  for (const session of sessions) {
+    const card = document.createElement('div');
+    card.className = 'session-card';
+
+    const info = document.createElement('div');
+    info.className = 'session-card-info';
+
+    const idEl = document.createElement('div');
+    idEl.className = 'session-card-id';
+    const rankPts = session.rank && session.points ? ` — 上位${session.rank}名に${session.points}` : '';
+    idEl.textContent = session.id + rankPts;
+    info.appendChild(idEl);
+
+    if (session.hashtags && session.hashtags.length > 0) {
+      const tags = document.createElement('div');
+      tags.className = 'session-card-tags';
+      for (const h of session.hashtags) {
+        const tag = document.createElement('span');
+        tag.className = 'session-tag';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = COLORS[h.colorIndex % COLORS.length].hex;
+        tag.appendChild(dot);
+        tag.appendChild(document.createTextNode(h.text));
+        tags.appendChild(tag);
+      }
+      info.appendChild(tags);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'session-card-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.className = 'btn-open';
+    openBtn.textContent = '開く';
+    openBtn.addEventListener('click', () => showEditorView(session.id));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-danger';
+    delBtn.textContent = '削除';
+    delBtn.addEventListener('click', () => {
+      if (confirm(`セッション ${session.id} を削除しますか？`)) {
+        deleteSession(session.id);
+        renderSessionList();
+      }
+    });
+
+    actions.appendChild(openBtn);
+    actions.appendChild(delBtn);
+    card.appendChild(info);
+    card.appendChild(actions);
+    list.appendChild(card);
+  }
+}
+
+// ─── Save current editor state ───
+function saveCurrentSession() {
+  if (!currentSessionId) return;
+  const existing = getSession(currentSessionId);
+  const session = {
+    id: currentSessionId,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    rank: getRank(),
+    points: getPoints(),
+    hashtags: currentBanners.map(b => ({ text: b.text, colorIndex: b.colorIndex })),
+  };
+  saveSession(session);
+}
+
+// ─── Generate ───
+function generate(presetHashtags) {
+  const input = document.getElementById('hashtag-input').value.trim();
+  if (!input) return;
+
+  const lines = input.split('\n').map(l => l.trim()).filter(l => l);
+  const preview = document.getElementById('preview-section');
+  preview.innerHTML = '';
+  currentBanners = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i];
+    const colorIdx = presetHashtags ? presetHashtags[i]?.colorIndex ?? (i % COLORS.length) : i % COLORS.length;
+    const color = COLORS[colorIdx];
+
+    const group = document.createElement('div');
+    group.className = 'hashtag-group';
+
+    const header = document.createElement('div');
+    header.className = 'hashtag-header';
+    const indicator = document.createElement('span');
+    indicator.className = 'color-indicator';
+    indicator.style.background = color.hex;
+    const title = document.createElement('span');
+    title.className = 'hashtag-title';
+    title.textContent = `# ${text}`;
+    const select = document.createElement('select');
+    select.className = 'color-select';
+    COLORS.forEach((c, ci) => {
+      const opt = document.createElement('option');
+      opt.value = ci;
+      opt.textContent = c.name;
+      if (ci === colorIdx) opt.selected = true;
+      select.appendChild(opt);
+    });
+    header.appendChild(indicator);
+    header.appendChild(title);
+    header.appendChild(select);
+    group.appendChild(header);
+
+    const row = document.createElement('div');
+    row.className = 'banner-row';
+    const bannerData = { text, colorIndex: colorIdx, canvases: {} };
+
+    for (const [sizeName, size] of Object.entries(SIZES)) {
+      const item = document.createElement('div');
+      item.className = 'banner-item';
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = `${sizeName.toUpperCase()} (${size.width * SCALE}×${size.height * SCALE})`;
+      const canvas = document.createElement('canvas');
+      const displayScale = sizeName === 'post' ? 0.5 : sizeName === 'sp' ? 0.6 : 1;
+      canvas.style.width = `${size.width * displayScale}px`;
+      canvas.style.height = `${size.height * displayScale}px`;
+
+      if (sizeName === 'pc') renderPC(canvas, text, color.hex);
+      else if (sizeName === 'sp') renderSP(canvas, text, color.hex);
+      else renderPost(canvas, text, color.hex);
+
+      bannerData.canvases[sizeName] = canvas;
+      item.appendChild(label);
+      item.appendChild(canvas);
+      row.appendChild(item);
+    }
+
+    group.appendChild(row);
+    preview.appendChild(group);
+    currentBanners.push(bannerData);
+
+    select.addEventListener('change', (e) => {
+      const newColorIdx = parseInt(e.target.value);
+      const newColor = COLORS[newColorIdx];
+      indicator.style.background = newColor.hex;
+      bannerData.colorIndex = newColorIdx;
+      renderPC(bannerData.canvases.pc, text, newColor.hex);
+      renderSP(bannerData.canvases.sp, text, newColor.hex);
+      renderPost(bannerData.canvases.post, text, newColor.hex);
+      saveCurrentSession();
+    });
+  }
+
+  document.getElementById('export-btn').disabled = false;
+  saveCurrentSession();
+}
+
+// ─── Export ───
+async function exportAll() {
+  if (currentBanners.length === 0) return;
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  btn.textContent = '書き出し中...';
+
+  try {
+    const zip = new JSZip();
+    const folderName = currentSessionId || getSessionName();
+    const folder = zip.folder(folderName);
+
+    for (const banner of currentBanners) {
+      for (const [sizeName, canvas] of Object.entries(banner.canvases)) {
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1];
+        folder.file(`${banner.text}_${sizeName}.png`, base64, { base64: true });
+      }
+    }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = `${folderName}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert('書き出しエラー: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'PNG一括書き出し';
+  }
+}
+
+// ─── Init ───
+async function init() {
+  await document.fonts.ready;
+  await document.fonts.load('900 48px "Noto Sans JP"');
+  await document.fonts.load('700 65px "Lexend Deca"');
+  await loadAllImages();
+
+  document.getElementById('new-session-btn').addEventListener('click', () => {
+    const id = getSessionName();
+    saveSession({ id, createdAt: new Date().toISOString(), hashtags: [] });
+    showEditorView(id);
+  });
+
+  document.getElementById('back-btn').addEventListener('click', showListView);
+  document.getElementById('generate-btn').addEventListener('click', () => generate());
+  document.getElementById('export-btn').addEventListener('click', exportAll);
+  document.getElementById('hashtag-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); generate(); }
+  });
+
+  renderSessionList();
+}
+
+init();
+</script>
+</body>
+</html>
