@@ -17,7 +17,7 @@ body {
   padding: 32px;
   min-height: 100vh;
 }
-.app { max-width: 1200px; margin: 0 auto; }
+.app { max-width: 1280px; margin: 0 auto; }
 h1 { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
 .session-name { font-size: 14px; color: #86868b; margin-bottom: 24px; }
 .input-section {
@@ -159,9 +159,14 @@ canvas { display: block; border-radius: 4px; }
     <div class="input-section">
       <label>ハッシュタグ文字列（1行に1つ）</label>
       <textarea id="hashtag-input" placeholder="当直明けのご褒美&#10;わが子の話&#10;忘れられない患者の言葉&#10;今日の自分を褒めたい！&#10;将来の不安&#10;しくじり先生から一言"></textarea>
-      <div style="display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap">
-        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:13px">上位<input type="number" id="rank-input" value="3" min="1" max="99" style="width:50px;padding:4px 6px;border:1px solid #d2d2d7;border-radius:6px;font-size:14px;font-family:'Noto Sans JP',sans-serif;text-align:center">名に</label>
-        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:13px"><input type="number" id="points-input" value="3000" min="0" max="999999" style="width:80px;padding:4px 6px;border:1px solid #d2d2d7;border-radius:6px;font-size:14px;font-family:'Noto Sans JP',sans-serif;text-align:center"><span style="font-size:14px">a</span></label>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+        <label style="margin:0;font-size:13px;font-weight:700">サブタイトル</label>
+        <input type="text" id="subtitle-input" value="3名に最大3000a" placeholder="3名に最大3000a" style="width:260px;padding:4px 8px;border:1px solid #d2d2d7;border-radius:6px;font-size:14px;font-family:'Noto Sans JP',sans-serif">
+        <span style="font-size:11px;color:#86868b">数字→大きく表示　a→アクションマーク</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <label style="margin:0;font-size:13px;font-weight:700">サブタイトル（cplist用）</label>
+        <input type="text" id="subtitle-cplist-input" value="最大3000a" placeholder="最大3000a" style="width:200px;padding:4px 8px;border:1px solid #d2d2d7;border-radius:6px;font-size:14px;font-family:'Noto Sans JP',sans-serif">
       </div>
       <div class="btn-row">
         <button class="btn-primary" id="generate-btn">生成</button>
@@ -185,9 +190,10 @@ const COLORS = [
 ];
 
 const SIZES = {
-  pc:   { width: 240, height: 80 },
-  sp:   { width: 600, height: 120 },
-  post: { width: 800, height: 450 },
+  pc:     { width: 240, height: 80 },
+  sp:     { width: 600, height: 120 },
+  post:   { width: 800, height: 450 },
+  cplist: { width: 120, height: 120 },
 };
 
 const SCALE = 2;
@@ -278,6 +284,63 @@ function measureTextWithTracking(ctx, text, tracking) {
     if (i < chars.length - 1) w += tracking;
   }
   return w;
+}
+
+function wrapText(ctx, text, maxW, tracking) {
+  if (measureTextWithTracking(ctx, text, tracking) <= maxW) return [text];
+
+  const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+  const wordBounds = new Set([0]);
+  for (const seg of segmenter.segment(text)) wordBounds.add(seg.index);
+  wordBounds.add(text.length);
+
+  const div = document.createElement('div');
+  Object.assign(div.style, {
+    position: 'absolute', visibility: 'hidden', left: '-9999px',
+    width: maxW + 'px', font: ctx.font,
+    letterSpacing: tracking + 'px',
+    wordBreak: 'auto-phrase', overflowWrap: 'break-word',
+    lineHeight: '2',
+  });
+  div.textContent = text;
+  document.body.appendChild(div);
+
+  const rawBreaks = [0];
+  const textNode = div.firstChild;
+  if (textNode) {
+    const range = document.createRange();
+    let prevTop = -Infinity;
+    for (let i = 0; i < text.length; i++) {
+      range.setStart(textNode, i);
+      range.setEnd(textNode, i + 1);
+      const { top } = range.getBoundingClientRect();
+      if (top > prevTop + 2 && i > 0) rawBreaks.push(i);
+      prevTop = top;
+    }
+  }
+  document.body.removeChild(div);
+
+  const snapped = [0];
+  for (let k = 1; k < rawBreaks.length; k++) {
+    const bp = rawBreaks[k];
+    if (wordBounds.has(bp)) { snapped.push(bp); continue; }
+    let best = bp;
+    for (let j = bp - 1; j > snapped[snapped.length - 1]; j--) {
+      if (wordBounds.has(j)) { best = j; break; }
+    }
+    if (best !== snapped[snapped.length - 1]) {
+      const prev = text.slice(snapped[snapped.length - 1], best);
+      if (measureTextWithTracking(ctx, prev, tracking) <= maxW) { snapped.push(best); continue; }
+    }
+    snapped.push(bp);
+  }
+
+  const lines = [];
+  for (let i = 0; i < snapped.length; i++) {
+    const end = i + 1 < snapped.length ? snapped[i + 1] : text.length;
+    if (snapped[i] < end) lines.push(text.slice(snapped[i], end));
+  }
+  return lines.length > 0 ? lines : [text];
 }
 
 function splitText(ctx, text, maxW, tracking) {
@@ -396,7 +459,7 @@ function renderSP(canvas, text, colorHex) {
   const textBlockH = lines.length === 1 ? hashH : lineH * lines.length;
 
   const row2H = 23;
-  const vGap = 8;
+  const vGap = 14;
   const totalH = textBlockH + vGap + row2H;
   const contentTop = (H - totalH) / 2;
 
@@ -423,48 +486,84 @@ function renderSP(canvas, text, colorHex) {
 }
 
 // ─── Get current rank/points values ───
-function getRank() { return document.getElementById('rank-input')?.value || '3'; }
-function getPoints() { return document.getElementById('points-input')?.value || '3000'; }
+function getSubtitle() { return document.getElementById('subtitle-input')?.value || '3名に最大3000a'; }
+function getSubtitleCplist() { return document.getElementById('subtitle-cplist-input')?.value || '最大3000a'; }
 
-// ─── Subtitle renderer for PC/SP ───
+function parseSubtitle(text) {
+  const segs = [];
+  let buf = '';
+  let bufType = null;
+  const flush = () => { if (buf) { segs.push({ type: bufType, text: buf }); buf = ''; bufType = null; } };
+  for (const ch of text) {
+    if (ch === 'a' || ch === 'ａ') {
+      flush();
+      segs.push({ type: 'action' });
+    } else if (/[0-9０-９]/.test(ch)) {
+      if (bufType !== 'num') flush();
+      bufType = 'num';
+      buf += ch.normalize('NFKC');
+    } else {
+      if (bufType !== 'jp') flush();
+      bufType = 'jp';
+      buf += ch;
+    }
+  }
+  flush();
+  return segs;
+}
+
+// ─── Subtitle renderer (shared) ───
+function measureSubtitleWidth(ctx, segs, p, scale) {
+  const s = scale || 1;
+  const gapPx = 1;
+  let total = 0;
+  for (const seg of segs) {
+    if (seg.type === 'action') { total += p.iconSize * s; }
+    else if (seg.type === 'num') { ctx.font = `700 ${Math.round(p.numSize * s)}px "Lexend Deca"`; total += measureTextWithTracking(ctx, seg.text, p.numTracking * s); }
+    else { ctx.font = `700 ${Math.round(p.jpSize * s)}px "Noto Sans JP"`; total += measureTextWithTracking(ctx, seg.text, p.jpTracking * s); }
+  }
+  return total + gapPx * (segs.length - 1);
+}
+
+function renderSubtitleSegments(ctx, segs, centerX, centerY, p, baseline, maxW) {
+  const bl = baseline || 'middle';
+  const gapPx = 1;
+  let scale = 1;
+  if (maxW) {
+    const natural = measureSubtitleWidth(ctx, segs, p, 1);
+    if (natural > maxW) scale = maxW / natural;
+  }
+  const sp = { jpSize: p.jpSize * scale, numSize: p.numSize * scale, jpTracking: p.jpTracking * scale, numTracking: p.numTracking * scale, iconSize: p.iconSize * scale };
+  const widths = segs.map(s => {
+    if (s.type === 'action') return sp.iconSize;
+    if (s.type === 'num') { ctx.font = `700 ${Math.round(sp.numSize)}px "Lexend Deca"`; return measureTextWithTracking(ctx, s.text, sp.numTracking); }
+    ctx.font = `700 ${Math.round(sp.jpSize)}px "Noto Sans JP"`; return measureTextWithTracking(ctx, s.text, sp.jpTracking);
+  });
+  const totalW = widths.reduce((a, b) => a + b, 0) + gapPx * (segs.length - 1);
+  let x = centerX - totalW / 2;
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = bl;
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (s.type === 'action') {
+      const iy = bl === 'middle' ? centerY - sp.iconSize / 2 : centerY - sp.iconSize;
+      ctx.drawImage(loadedImages.action, x, iy, sp.iconSize, sp.iconSize);
+    } else if (s.type === 'num') {
+      ctx.font = `700 ${Math.round(sp.numSize)}px "Lexend Deca"`;
+      drawTextWithTracking(ctx, s.text, x, centerY, sp.numTracking);
+    } else {
+      ctx.font = `700 ${Math.round(sp.jpSize)}px "Noto Sans JP"`;
+      drawTextWithTracking(ctx, s.text, x, centerY, sp.jpTracking);
+    }
+    x += widths[i] + gapPx;
+  }
+}
+
 function renderSubtitlePcSp(ctx, centerX, centerY, size) {
   const p = size === 'pc'
-    ? { jpSize: 12, numSize: 16, jpTracking: 0.6, numTracking: 0.8, numTracking2: 0.16, iconSize: 12 }
-    : { jpSize: 19, numSize: 23, jpTracking: 0.95, numTracking: 1.15, numTracking2: 0.23, iconSize: 16 };
-
-  const rank = getRank();
-  const points = getPoints();
-
-  ctx.fillStyle = 'white';
-  ctx.textBaseline = 'middle';
-
-  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
-  const w1 = measureTextWithTracking(ctx, '上位', p.jpTracking);
-  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
-  const w2 = measureTextWithTracking(ctx, rank, p.numTracking);
-  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
-  const w3 = measureTextWithTracking(ctx, '名に', p.jpTracking);
-  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
-  const w4 = measureTextWithTracking(ctx, points, p.numTracking2);
-  const w5 = p.iconSize;
-
-  const gapPx = 1;
-  const totalW = w1 + gapPx + w2 + gapPx + w3 + gapPx + w4 + gapPx + w5;
-  let x = centerX - totalW / 2;
-
-  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
-  drawTextWithTracking(ctx, '上位', x, centerY, p.jpTracking);
-  x += w1 + gapPx;
-  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
-  drawTextWithTracking(ctx, rank, x, centerY, p.numTracking);
-  x += w2 + gapPx;
-  ctx.font = `700 ${p.jpSize}px "Noto Sans JP"`;
-  drawTextWithTracking(ctx, '名に', x, centerY, p.jpTracking);
-  x += w3 + gapPx;
-  ctx.font = `700 ${p.numSize}px "Lexend Deca"`;
-  drawTextWithTracking(ctx, points, x, centerY, p.numTracking2);
-  x += w4 + gapPx;
-  ctx.drawImage(loadedImages.action, x, centerY - p.iconSize / 2, p.iconSize, p.iconSize);
+    ? { jpSize: 12, numSize: 16, jpTracking: 0.6, numTracking: 0.8, iconSize: 12 }
+    : { jpSize: 23, numSize: 28, jpTracking: 1.15, numTracking: 1.4, iconSize: 20 };
+  renderSubtitleSegments(ctx, parseSubtitle(getSubtitle()), centerX, centerY, p);
 }
 
 // ─── Render: Post Banner (800×450 → export 1600×900) ───
@@ -536,46 +635,59 @@ function renderPost(canvas, text, colorHex) {
   ctx.fillStyle = 'white';
   ctx.beginPath(); ctx.roundRect((W - 102) / 2, 294, 102, 3, 2); ctx.fill();
 
-  // Bottom text: "上位" + rank(Lexend) + "名に" + points(Lexend) + icon
-  const rank = getRank();
-  const points = getPoints();
-  const jpFontSize = 32, numFontSize = 65, rankFontSize = 45, bottomGap = 6, iconSize = 44;
-
-  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
-  const w_joui = measureTextWithTracking(ctx, '上位', 1.6);
-  ctx.font = `700 ${rankFontSize}px "Lexend Deca"`;
-  const w_rank = ctx.measureText(rank).width;
-  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
-  const w_meini = measureTextWithTracking(ctx, '名に', 1.6);
-  ctx.font = `700 ${numFontSize}px "Lexend Deca"`;
-  const w_points = ctx.measureText(points).width;
-
-  const totalBottomW = w_joui + w_rank + w_meini + bottomGap + w_points + bottomGap + iconSize;
-  let bx = (W - totalBottomW) / 2;
+  // Bottom text via segments
+  const postSubP = { jpSize: 32, numSize: 55, jpTracking: 1.6, numTracking: 0, iconSize: 34 };
   const bottomY = 322;
-  const rowH = numFontSize;
+  const rowH = postSubP.numSize;
   const baselineY = bottomY + rowH * 0.75;
+  renderSubtitleSegments(ctx, parseSubtitle(getSubtitle()), W / 2, baselineY, postSubP, 'alphabetic');
+}
 
+// ─── Render: Cplist Banner (120×120 → export 240×240) ───
+function renderCplist(canvas, text, colorHex) {
+  const W = 120, H = 120;
+  const ctx = setupCanvas(canvas, W, H);
+
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(loadedImages.decoPc, 40, -15, 106, 78);
+
+  const contentLeft = 7;
+  const contentTop = 3;
+  const contentH = 91;
+  const hashW = 21, hashH = 29;
+  const fontSize = 18;
+  const tracking = 0.95;
+  const gap = 7;
+  const maxTextW = W - contentLeft - hashW - gap - 3;
+
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
   ctx.fillStyle = 'white';
-  ctx.textBaseline = 'alphabetic';
+  const lineH = 21;
+  const lines = wrapText(ctx, text, maxTextW, tracking);
 
-  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
-  drawTextWithTracking(ctx, '上位', bx, baselineY, 1.6);
-  bx += w_joui;
+  const textBlockH = lines.length * lineH;
+  const blockH = Math.max(hashH, textBlockH);
+  const blockTop = contentTop + (contentH - blockH) / 2;
 
-  ctx.font = `700 ${rankFontSize}px "Lexend Deca"`;
-  ctx.fillText(rank, bx, baselineY);
-  bx += w_rank;
+  ctx.drawImage(loadedImages.hashPc, contentLeft, blockTop + (blockH - hashH) / 2, hashW, hashH);
 
-  ctx.font = `900 ${jpFontSize}px "Noto Sans JP"`;
-  drawTextWithTracking(ctx, '名に', bx, baselineY, 1.6);
-  bx += w_meini + bottomGap;
+  ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'middle';
+  const textX = contentLeft + hashW + gap;
+  const textTop = blockTop + (blockH - textBlockH) / 2;
+  for (let i = 0; i < lines.length; i++) {
+    drawTextWithTracking(ctx, lines[i], textX, textTop + lineH * i + lineH / 2, tracking);
+  }
 
-  ctx.font = `700 ${numFontSize}px "Lexend Deca"`;
-  ctx.fillText(points, bx, baselineY);
-  bx += w_points + bottomGap;
+  const cpSubP = { jpSize: 15, numSize: 19, jpTracking: 0.7, numTracking: 0.18, iconSize: 14 };
+  const subBarH = cpSubP.numSize + 8;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+  ctx.fillRect(0, H - subBarH, W, subBarH);
 
-  ctx.drawImage(loadedImages.action, bx, bottomY + (rowH - iconSize) / 2 - 2, iconSize, iconSize);
+  const subCenterY = H - subBarH / 2 + 1;
+  renderSubtitleSegments(ctx, parseSubtitle(getSubtitleCplist()), W / 2, subCenterY, cpSubP, 'middle', W - 6);
 }
 
 // ─── Session Storage ───
@@ -638,10 +750,12 @@ function showEditorView(sessionId) {
 
   const session = getSession(sessionId);
   const sessions = loadSessions();
-  const prevSession = sessions.find(s => s.id !== sessionId && s.rank);
+  const prevSession = sessions.find(s => s.id !== sessionId && s.subtitle);
 
-  document.getElementById('rank-input').value = session?.rank || prevSession?.rank || '3';
-  document.getElementById('points-input').value = session?.points || prevSession?.points || '3000';
+  let subtitle = session?.subtitle || prevSession?.subtitle;
+  if (!subtitle && (session?.rank || session?.points)) subtitle = `${session.rank || '3'}名に最大${session.points || '3000'}a`;
+  document.getElementById('subtitle-input').value = subtitle || '3名に最大3000a';
+  document.getElementById('subtitle-cplist-input').value = session?.subtitleCplist || prevSession?.subtitleCplist || '最大3000a';
 
   if (session && session.hashtags && session.hashtags.length > 0) {
     document.getElementById('hashtag-input').value = session.hashtags.map(h => h.text).join('\n');
@@ -672,8 +786,8 @@ function renderSessionList() {
 
     const idEl = document.createElement('div');
     idEl.className = 'session-card-id';
-    const rankPts = session.rank && session.points ? ` — 上位${session.rank}名に${session.points}` : '';
-    idEl.textContent = session.id + rankPts;
+    const subText = session.subtitle ? ` — ${session.subtitle}` : (session.rank && session.points ? ` — ${session.rank}名に最大${session.points}a` : '');
+    idEl.textContent = session.id + subText;
     info.appendChild(idEl);
 
     if (session.hashtags && session.hashtags.length > 0) {
@@ -725,8 +839,8 @@ function saveCurrentSession() {
   const session = {
     id: currentSessionId,
     createdAt: existing?.createdAt || new Date().toISOString(),
-    rank: getRank(),
-    points: getPoints(),
+    subtitle: getSubtitle(),
+    subtitleCplist: getSubtitleCplist(),
     hashtags: currentBanners.map(b => ({ text: b.text, colorIndex: b.colorIndex })),
   };
   saveSession(session);
@@ -789,7 +903,8 @@ function generate(presetHashtags) {
 
       if (sizeName === 'pc') renderPC(canvas, text, color.hex);
       else if (sizeName === 'sp') renderSP(canvas, text, color.hex);
-      else renderPost(canvas, text, color.hex);
+      else if (sizeName === 'post') renderPost(canvas, text, color.hex);
+      else if (sizeName === 'cplist') renderCplist(canvas, text, color.hex);
 
       bannerData.canvases[sizeName] = canvas;
       item.appendChild(label);
@@ -809,6 +924,7 @@ function generate(presetHashtags) {
       renderPC(bannerData.canvases.pc, text, newColor.hex);
       renderSP(bannerData.canvases.sp, text, newColor.hex);
       renderPost(bannerData.canvases.post, text, newColor.hex);
+      renderCplist(bannerData.canvases.cplist, text, newColor.hex);
       saveCurrentSession();
     });
   }
