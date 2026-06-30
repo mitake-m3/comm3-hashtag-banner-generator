@@ -654,17 +654,42 @@ function renderCplist(canvas, text, colorHex) {
 
   const contentLeft = 7;
   const contentTop = 3;
-  const contentH = 91;
-  const hashW = 21, hashH = 29;
-  const fontSize = 18;
-  const tracking = 0.95;
   const gap = 7;
+  const cpSubP2 = { jpSize: 15, numSize: 19, jpTracking: 0.7, numTracking: 0.18, iconSize: 14 };
+  const subBarH2 = cpSubP2.numSize + 8;
+  const contentH = H - contentTop - subBarH2 - 2;
+  const hashW = 21, hashH = 29;
   const maxTextW = W - contentLeft - hashW - gap - 3;
 
+  let fontSize = 18;
+  let tracking = 0.95;
+  let lineH = 21;
   ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
-  ctx.fillStyle = 'white';
-  const lineH = 21;
-  const lines = wrapText(ctx, text, maxTextW, tracking);
+  const charLen = [...text].length;
+  const linesOverflow = (ls) => {
+    if (charLen >= 5 && ls.length === 1) return true;
+    for (const l of ls) { if (measureTextWithTracking(ctx, l, tracking) > maxTextW) return true; }
+    return false;
+  };
+  let wrapW = maxTextW;
+  let lines = wrapText(ctx, text, wrapW, tracking);
+  while (linesOverflow(lines) && wrapW > fontSize * 2) {
+    wrapW -= 2;
+    lines = wrapText(ctx, text, wrapW, tracking);
+  }
+
+  while (lines.length * lineH > contentH && fontSize > 12) {
+    fontSize -= 1;
+    tracking = fontSize * 0.95 / 18;
+    lineH = Math.round(fontSize * 21 / 18);
+    ctx.font = `900 ${fontSize}px "Noto Sans JP"`;
+    wrapW = maxTextW;
+    lines = wrapText(ctx, text, wrapW, tracking);
+    while (linesOverflow(lines) && wrapW > fontSize * 2) {
+      wrapW -= 2;
+      lines = wrapText(ctx, text, wrapW, tracking);
+    }
+  }
 
   const textBlockH = lines.length * lineH;
   const blockH = Math.max(hashH, textBlockH);
@@ -681,13 +706,11 @@ function renderCplist(canvas, text, colorHex) {
     drawTextWithTracking(ctx, lines[i], textX, textTop + lineH * i + lineH / 2, tracking);
   }
 
-  const cpSubP = { jpSize: 15, numSize: 19, jpTracking: 0.7, numTracking: 0.18, iconSize: 14 };
-  const subBarH = cpSubP.numSize + 8;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
-  ctx.fillRect(0, H - subBarH, W, subBarH);
+  ctx.fillRect(0, H - subBarH2, W, subBarH2);
 
-  const subCenterY = H - subBarH / 2 + 1;
-  renderSubtitleSegments(ctx, parseSubtitle(getSubtitleCplist()), W / 2, subCenterY, cpSubP, 'middle', W - 6);
+  const subCenterY = H - subBarH2 / 2 + 1;
+  renderSubtitleSegments(ctx, parseSubtitle(getSubtitleCplist()), W / 2, subCenterY, cpSubP2, 'middle', W - 6);
 }
 
 // ─── Session Storage ───
